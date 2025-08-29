@@ -16,7 +16,6 @@ plugins:
       handlers:
         python:
           paths: ["src/svalinn_ai"]
-  - mermaid2
 theme:
   name: material
   feature:
@@ -51,3 +50,8 @@ markdown_extensions:
       permalink: true
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: pymdownx.superfences.fence_code_format
