@@ -1,7 +1,7 @@
 site_name: svalinn-ai
 repo_url: https://github.com/lorenzomaiuri/svalinn-ai
 site_url: https://lorenzomaiuri.github.io/svalinn-ai
-site_description: Svalinn AI: The unbreakable shield for your AI applications. An open-source, CPU-first guardian before they reach your LLM
+site_description: Svalinn AI - The unbreakable shield for your AI applications. An open-source, CPU-first guardian before they reach your LLM
 site_author: Lorenzo Maiuri
 edit_uri: edit/main/docs/
 repo_name: lorenzomaiuri/svalinn-ai
