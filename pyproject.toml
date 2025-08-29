@@ -5,23 +5,20 @@ description = "Svalinn AI: The unbreakable shield for your AI applications. An o
 authors = [{ name = "Lorenzo Maiuri", email = "contact@lorenzomaiuri.dev" }]
 readme = "README.md"
 keywords = ['python']
-requires-python = ">=3.9,<4.0"
+requires-python = ">=3.12,<4.0"
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
 [project.urls]
-Homepage = "https://lorenzomaiuri.github.io/svalinn-ai/"
-Repository = "https://github.com/lorenzomaiuri/svalinn-ai"
-Documentation = "https://lorenzomaiuri.github.io/svalinn-ai/"
+Homepage = "https://lorenzomaiuri-dev.github.io/svalinn-ai/"
+Repository = "https://github.com/lorenzomaiuri-dev/svalinn-ai"
+Documentation = "https://lorenzomaiuri-dev.github.io/svalinn-ai/"
 
 [dependency-groups]
 dev = [
@@ -58,7 +55,7 @@ show_error_codes = true
 testpaths = ["tests"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py312"
 line-length = 120
 fix = true
 
