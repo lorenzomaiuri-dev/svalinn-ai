@@ -16,6 +16,7 @@ plugins:
       handlers:
         python:
           paths: ["src/svalinn_ai"]
+  - mermaid2
 theme:
   name: material
   feature:
