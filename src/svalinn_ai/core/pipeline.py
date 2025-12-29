@@ -4,6 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from ..guardians.honeypot import HoneypotExecutor
 from ..guardians.input_guardian import InputGuardian
 from ..guardians.output_guardian import OutputGuardian
@@ -25,11 +27,38 @@ logger = get_logger(__name__)
 
 class SvalinnAIPipeline:
     def __init__(self, config_dir: Path | None = None):
-        self.normalizer = AdvancedTextNormalizer()
+        """
+        Initialize the Svalinn AI Pipeline.
+
+        Args:
+            config_dir: Directory containing configuration files (models.yaml, normalization.yaml)
+        """
+        # 1. Load Normalization Configuration
+        norm_config = {}
+        if config_dir:
+            norm_path = config_dir / "normalization.yaml"
+            if norm_path.exists():
+                try:
+                    with open(norm_path, encoding="utf-8") as f:
+                        norm_config = yaml.safe_load(f) or {}
+                    logger.info(f"Loaded normalization config from {norm_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to load normalization config from {norm_path}: {e}")
+                    logger.info("Using default normalization rules")
+            else:
+                logger.debug(f"No normalization.yaml found in {config_dir}, using defaults")
+
+        # Initialize Normalizer with loaded config
+        self.normalizer = AdvancedTextNormalizer(config=norm_config)
+
+        # 2. Initialize Model Manager
+        # It handles its own loading of models.yaml
         self.model_manager = ModelManager(config_dir / "models.yaml" if config_dir else None)
+
+        # 3. Initialize Metrics
         self.metrics = MetricsCollector()
 
-        # Initialize guardians
+        # 4. Initialize Guardians
         self.input_guardian = InputGuardian(self.model_manager)
         self.honeypot = HoneypotExecutor(self.model_manager)
         self.output_guardian = OutputGuardian(self.model_manager)
