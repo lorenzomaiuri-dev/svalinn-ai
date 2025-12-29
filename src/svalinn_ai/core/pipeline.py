@@ -13,6 +13,7 @@ from ..utils.logger import get_logger
 from ..utils.metrics import MetricsCollector
 from .models import ModelManager
 from .normalizer import AdvancedTextNormalizer
+from .prompts import PromptManager
 from .types import (
     GuardianResult,
     HoneypotResponse,
@@ -51,17 +52,19 @@ class SvalinnAIPipeline:
         # Initialize Normalizer with loaded config
         self.normalizer = AdvancedTextNormalizer(config=norm_config)
 
-        # 2. Initialize Model Manager
+        # 2. Initialize Managers
         # It handles its own loading of models.yaml
         self.model_manager = ModelManager(config_dir / "models.yaml" if config_dir else None)
+        # Initialize Prompt Manager
+        self.prompt_manager = PromptManager(config_dir)
 
         # 3. Initialize Metrics
         self.metrics = MetricsCollector()
 
         # 4. Initialize Guardians
-        self.input_guardian = InputGuardian(self.model_manager)
-        self.honeypot = HoneypotExecutor(self.model_manager)
-        self.output_guardian = OutputGuardian(self.model_manager)
+        self.input_guardian = InputGuardian(self.model_manager, self.prompt_manager)
+        self.honeypot = HoneypotExecutor(self.model_manager, self.prompt_manager)
+        self.output_guardian = OutputGuardian(self.model_manager, self.prompt_manager)
 
         logger.info("svalinn-ai pipeline initialized")
 
