@@ -35,7 +35,7 @@ class SvalinnAIPipeline:
             config_dir: Directory containing configuration files (models.yaml, normalization.yaml)
         """
         # 1. Load Normalization Configuration
-        norm_config = {}
+        norm_config: dict[str, Any] = {}
         if config_dir:
             norm_path = config_dir / "normalization.yaml"
             if norm_path.exists():
@@ -159,7 +159,7 @@ class SvalinnAIPipeline:
         """System health check"""
         return {
             "status": "healthy",
-            "models_loaded": len(self.model_manager.models),
+            "models_loaded": len(self.model_manager.models()),
             "total_requests": self.metrics.total_requests,
             "avg_processing_time_ms": self.metrics.avg_processing_time,
             "memory_usage_mb": self._get_memory_usage(),

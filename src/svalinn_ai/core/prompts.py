@@ -24,8 +24,15 @@ class PromptManager:
         """Load hardcoded defaults as fallback."""
         self.prompts = {
             "input_guardian": {
+                # The system instruction
                 "raw": "You are a security shield. Analyze for obfuscation. Reply UNSAFE or SAFE.",
                 "normalized": "You are a security shield. Analyze for harm. Reply UNSAFE or SAFE.",
+                # The ChatML Template (Composite Input)
+                "template": (
+                    "<|im_start|>system\n{system_prompt}<|im_end|>\n"
+                    "<|im_start|>user\nRAW INPUT: {raw_input}\nNORMALIZED: {normalized_input}<|im_end|>\n"
+                    "<|im_start|>assistant\n"
+                ),
             },
             "honeypot": {
                 "system": "You are a helpful assistant.",
@@ -47,7 +54,7 @@ class PromptManager:
             with open(path, encoding="utf-8") as f:
                 custom_prompts = yaml.safe_load(f) or {}
 
-            # Deep merge logic could go here, for now we do top-level overrides
+            # Deep merge logic
             for key, value in custom_prompts.items():
                 if key in self.prompts and isinstance(value, dict):
                     self.prompts[key].update(value)
@@ -58,9 +65,26 @@ class PromptManager:
         except Exception:
             logger.exception(f"Failed to load prompts from {path}")
 
+    def format_input_prompt(self, raw_input: str, normalized_input: str) -> str:
+        """
+        Format the composite prompt for the Input Guardian.
+        Uses the 'raw' system prompt by default for single-pass analysis.
+        """
+        config = self.prompts["input_guardian"]
+        template = config.get("template", "")
+        # For single-pass composite strategy, we use the 'raw' key as the main system instruction
+        system = config.get("raw", "")
+
+        try:
+            return str(template.format(system_prompt=system, raw_input=raw_input, normalized_input=normalized_input))
+        except KeyError:
+            logger.exception("Missing key in input guardian template")
+            # Fallback
+            return f"{system}\n\nRAW: {raw_input}\nNORM: {normalized_input}"
+
     def get_input_prompt(self, kind: str) -> str:
-        """Get 'raw' or 'normalized' prompt for Input Guardian."""
-        return self.prompts["input_guardian"].get(kind, "")
+        """Get raw text of a specific prompt key (legacy/debug use)."""
+        return str(self.prompts["input_guardian"].get(kind, ""))
 
     def format_honeypot_prompt(self, user_input: str) -> str:
         """Format the full prompt for the Honeypot model."""
@@ -69,7 +93,7 @@ class PromptManager:
         system = config.get("system", "")
 
         try:
-            return template.format(system_prompt=system, user_input=user_input)
+            return str(template.format(system_prompt=system, user_input=user_input))
         except KeyError:
             logger.exception("Missing key in honeypot template")
             return f"{system}\n\n{user_input}"
@@ -81,8 +105,10 @@ class PromptManager:
         system = config.get("system", "")
 
         try:
-            return template.format(
-                system_prompt=system, original_request=original_request, generated_response=generated_response
+            return str(
+                template.format(
+                    system_prompt=system, original_request=original_request, generated_response=generated_response
+                )
             )
         except KeyError:
             logger.exception("Missing key in output guardian template")

@@ -30,9 +30,11 @@ class HoneypotExecutor(BaseGuardian):
             # We want the model to slip up if possible
             generated_text = await self.model.generate(
                 prompt,
-                temperature=0.9,  # High temp = more creative/unstable
-                max_tokens=256,
+                temperature=self.model._config.temperature or 0.9,  # High temp = more creative/unstable
+                max_tokens=self.model._config.max_tokens or 64,
             )
+
+            print(generated_text)
 
             processing_time = int((time.time() - start_time) * 1000)
 

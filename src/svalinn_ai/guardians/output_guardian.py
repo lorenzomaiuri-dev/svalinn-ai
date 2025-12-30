@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 
 class OutputGuardian(BaseGuardian):
     """
-    Output Guardian - Analyzes honeypot responses using Phi-3.5.
+    Output Guardian - Analyzes honeypot responses.
     """
 
     @property
@@ -21,11 +21,13 @@ class OutputGuardian(BaseGuardian):
         original_request, generated_response = self._extract_parameters(*args, **kwargs)
         start_time = time.time()
 
-        # 1. Build Analysis Prompt
+        # 1. Build Analysis Prompt via PromptManager
         prompt = self.prompt_manager.format_output_guardian_prompt(original_request, generated_response)
 
         # 2. Run Analysis
-        response = await self.model.generate(prompt, temperature=0.0, max_tokens=10)
+        response = await self.model.generate(
+            prompt, temperature=self.model._config.temperature, max_tokens=self.model._config.max_tokens or 10
+        )
 
         # 3. Parse
         verdict = self._parse_verdict(response)
@@ -37,7 +39,7 @@ class OutputGuardian(BaseGuardian):
             confidence=0.9 if verdict == Verdict.UNSAFE else 0.7,
             reasoning=f"Output Analysis: {response.strip()}",
             processing_time_ms=processing_time,
-            metadata={"response_length": len(generated_response)},
+            metadata={"model": self.model._config.name, "response_length": len(generated_response)},
         )
 
     def _parse_verdict(self, response: str) -> Verdict:

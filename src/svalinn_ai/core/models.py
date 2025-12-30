@@ -41,7 +41,7 @@ class ModelConfig:
     path: str
     context_length: int = 4096
     temperature: float = 0.1
-    max_tokens: int = 512
+    max_tokens: int = 64
     n_gpu_layers: int = 0
     n_threads: int | None = None
 
@@ -86,7 +86,7 @@ class ThreadSafeModel:
                     stop=params["stop"],
                     echo=params["echo"],
                 )
-                return output["choices"][0]["text"]
+                return str(output["choices"][0]["text"])
             except Exception:
                 logger.exception(f"Inference error on {self._config.name}")
                 raise
@@ -119,7 +119,7 @@ class ModelManager:
 
     def __init__(self, config_path: Path | None = None):
         self.config_path = config_path
-        self._loaded_models: dict[str, ThreadSafeModel] = {}  # Key: Absolute Path
+        self._loaded_models: dict[str, ThreadSafeModel] = {}
         self._config_cache: dict[str, ModelConfig] = {}
 
         # Load configuration immediately
@@ -148,7 +148,7 @@ class ModelManager:
             },
         }
 
-        loaded_data = {}
+        loaded_data: dict[str, Any] = {}
         if self.config_path and self.config_path.exists():
             try:
                 with open(self.config_path, encoding="utf-8") as f:
@@ -221,3 +221,6 @@ class ModelManager:
         import gc
 
         gc.collect()
+
+    def models(self) -> dict[str, ThreadSafeModel]:
+        return self._loaded_models
