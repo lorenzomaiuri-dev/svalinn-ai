@@ -33,8 +33,19 @@ class SvalinnAIPipeline:
 
         Args:
             config_dir: Directory containing configuration files (models.yaml, normalization.yaml)
+                        If None, tries to auto-discover 'config' directory in CWD.
         """
-        # 1. Load Normalization Configuration
+        # 1. Auto-discover config directory
+        if config_dir is None:
+            cwd_config = Path("config")
+            if cwd_config.exists() and cwd_config.is_dir():
+                config_dir = cwd_config
+                logger.debug(f"Auto-detected config directory: {config_dir.absolute()}")
+
+        # 2. Initialize Prompt Manager (Needs to be early to load policies)
+        self.prompt_manager = PromptManager(config_dir)
+
+        # 3. Load Normalization Configuration
         norm_config: dict[str, Any] = {}
         if config_dir:
             norm_path = config_dir / "normalization.yaml"
@@ -52,16 +63,14 @@ class SvalinnAIPipeline:
         # Initialize Normalizer with loaded config
         self.normalizer = AdvancedTextNormalizer(config=norm_config)
 
-        # 2. Initialize Managers
-        # It handles its own loading of models.yaml
-        self.model_manager = ModelManager(config_dir / "models.yaml" if config_dir else None)
-        # Initialize Prompt Manager
-        self.prompt_manager = PromptManager(config_dir)
+        # 4. Initialize Model Manager
+        model_config_path = (config_dir / "models.yaml") if config_dir else None
+        self.model_manager = ModelManager(model_config_path)
 
-        # 3. Initialize Metrics
+        # 5. Initialize Metrics
         self.metrics = MetricsCollector()
 
-        # 4. Initialize Guardians
+        # 6. Initialize Guardians
         self.input_guardian = InputGuardian(self.model_manager, self.prompt_manager)
         self.honeypot = HoneypotExecutor(self.model_manager, self.prompt_manager)
         self.output_guardian = OutputGuardian(self.model_manager, self.prompt_manager)
@@ -157,9 +166,11 @@ class SvalinnAIPipeline:
 
     async def health_check(self) -> dict[str, Any]:
         """System health check"""
+        models_count = len(self.model_manager.models())
+
         return {
             "status": "healthy",
-            "models_loaded": len(self.model_manager.models()),
+            "models_loaded": models_count,
             "total_requests": self.metrics.total_requests,
             "avg_processing_time_ms": self.metrics.avg_processing_time,
             "memory_usage_mb": self._get_memory_usage(),

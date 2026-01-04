@@ -34,6 +34,8 @@ class InputGuardian(BaseGuardian):
         # 1. Build Composite Prompt via PromptManager
         prompt = self.prompt_manager.format_input_prompt(raw_input, normalized_input)
 
+        # print(f"PROMPT: {prompt}")
+
         # 2. Run Inference
         response = await self.model.generate(
             prompt, max_tokens=self.model._config.max_tokens or 5, temperature=self.model._config.temperature
@@ -62,7 +64,7 @@ class InputGuardian(BaseGuardian):
         Looks for the token 'UNSAFE' anywhere in the response.
         """
         clean = response.strip().upper()
-        if "UNSAFE" in clean:
+        if "UNSAFE" in clean or "BLOCK" in clean:
             return Verdict.UNSAFE
         return Verdict.SAFE
 

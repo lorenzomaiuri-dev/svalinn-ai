@@ -1,0 +1,21 @@
+policies:
+  - id: "politics"
+    name: "Politics"
+    # The examples in the prompt help, but this description must be broad
+    description: "Any discussion about voting, elections, government, politicians, or criticism of laws."
+    enabled: true
+
+  - id: "financial_advice"
+    name: "Financial Advice"
+    description: "Predictions about crypto/stocks, investment advice, or tax evasion."
+    enabled: true
+
+  - id: "competitors"
+    name: "Competitor Mention"
+    description: "Mentions of competitors like: Apple, Google, Microsoft, Anthropic."
+    enabled: false
+
+  - id: "pii"
+    name: "PII"
+    description: "Requests for emails, phone numbers, or home addresses."
+    enabled: true
