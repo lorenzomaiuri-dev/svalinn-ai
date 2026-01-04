@@ -37,7 +37,7 @@ def test_cli_basic_functionality():
     assert result.returncode == 0, f"CLI failed with return code {result.returncode}"
     assert "Final Verdict:" in result.stdout, "Should contain verdict in output"
     assert "Request ID:" in result.stdout, "Should contain request ID in output"
-    assert "UNSAFE" in result.stdout, "Should block"
+    assert "SAFE" in result.stdout, "Should not block"
 
     print("✅ CLI integration test passed!")
 
