@@ -3,114 +3,103 @@
 [![Release](https://img.shields.io/github/v/release/lorenzomaiuri-dev/svalinn-ai)](https://img.shields.io/github/v/release/lorenzomaiuri-dev/svalinn-ai)
 [![Build status](https://img.shields.io/github/actions/workflow/status/lorenzomaiuri-dev/svalinn-ai/main.yml?branch=main)](https://github.com/lorenzomaiuri-dev/svalinn-ai/actions/workflows/main.yml?query=branch%3Amain)
 [![codecov](https://codecov.io/gh/lorenzomaiuri-dev/svalinn-ai/branch/main/graph/badge.svg)](https://codecov.io/gh/lorenzomaiuri-dev/svalinn-ai)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/lorenzomaiuri-dev/svalinn-ai)](https://img.shields.io/github/commit-activity/m/lorenzomaiuri-dev/svalinn-ai)
+<!-- [![Commit activity](https://img.shields.io/github/commit-activity/m/lorenzomaiuri-dev/svalinn-ai)](https://img.shields.io/github/commit-activity/m/lorenzomaiuri-dev/svalinn-ai) -->
 [![License: MIT](https://img.shields.io/github/license/lorenzomaiuri-dev/svalinn-ai)](https://img.shields.io/github/license/lorenzomaiuri-dev/svalinn-ai)
 
-**Svalinn AI: The unbreakable shield for your AI applications.** An open-source, self-hostable security layer that detects and blocks LLM jailbreak and prompt injection attempts before they reach your primary model. Efficiently designed to run on CPU.
+**The Drop-in Guardrails Firewall for LLMs.**
+
+Svalinn AI is a self-hosted proxy that sits between your users and your LLM (OpenAI, Anthropic, or local). It enforces **security**, **safety**, and **custom business policies** in real-time, running entirely on your CPU with sub-second latency.
+
+Stop building custom moderation chains. Just point your API client to Svalinn.
 
 - **Github repository**: <https://github.com/lorenzomaiuri-dev/svalinn-ai/>
 - **Documentation**: <https://lorenzomaiuri-dev.github.io/svalinn-ai/>
 
-## 🛡️ What is Svalinn AI?
+## 🎯 Why use Svalinn?
 
-Svalinn AI is a robust pre-screening firewall for Large Language Models (LLMs). It acts as a guardrail, analyzing every user input for malicious intent, manipulation attempts, and known jailbreak patterns. By using a multi-stage analysis process with specialized, small language models, it ensures only safe and compliant requests are forwarded to your production LLM (like GPT-4, Claude, or Llama), protecting it from exploitation and reducing API costs on invalid requests.
+Most developers spend weeks writing regex and custom prompt chains to stop their bots from going rogue. Svalinn solves this infrastructurally:
+
+1.  **Define Policies:** "No politics," "No competitor mentions," "No financial advice."
+2.  **Point & Shoot:** Change your `base_url` to Svalinn.
+3.  **Done:** Your app is now protected.
 
 ## ✨ Key Features
 
--   **🛡️ Proactive Jailbreak Detection:** Identifies and blocks prompt injection and evasion attempts using a dual-channel analysis system.
--   **⚡ Low Latency:** Achieves sub-second average response times by leveraging optimized, small language models.
--   **💾 CPU-Native & Self-Hostable:** Runs entirely on a CPU-powered machine, ensuring data privacy and eliminating reliance on external APIs. No GPU required.
--   **🔍 Advanced Deobfuscation:** Neutralizes leetspeak, unusual Unicode, and other obfuscation techniques to reveal true intent.
--   **📊 Structured Logging & Analytics:** Built-in DuckDB integration for powerful logging, real-time monitoring, and attack trend analysis.
--   **🐳 Easy Deployment:** Simple setup with Docker and a clean Python API for easy integration into any stack.
+-   **🚧 Custom Guardrails:** Easily configure forbidden topics and business rules via YAML.
+-   **🛡️ Jailbreak Shield:** State-of-the-art protection against prompt injection, "DAN" attacks, and biological weapon instructions.
+-   **⚡ Ultra-Low Latency:** Optimized "Nano-LLM" architecture processes requests in ~300ms on standard CPUs.
+-   **🕵️ Privacy-First:** Self-hostable. No data leaves your server. No dependence on external moderation APIs.
+-   **🔌 Universal Proxy:** Acts as a transparent proxy for OpenAI-compatible APIs. Works with almost any SDK.
 
-## 🏗️ How It Works
+## 🏗️ Architecture
 
-Svalinn AI employs a efficient, multi-stage pipeline to analyze every request:
+Svalinn uses a "Defense-in-Depth" pipeline:
 
-```mermaid
-flowchart TD
-    A[User Input] --> B(Input Guardian);
-    subgraph B [Dual-Channel Analysis]
-        B1[Raw Text Analysis]
-        B2[Normalized Text Analysis]
-    end
-    B -- UNSAFE --> C[🛑 Request Blocked];
-    B -- SAFE --> D[Honeypot LLM];
-    D --> E[Generate Response];
-    E --> F(Output Guardian);
-    F -- VIOLATION --> C;
-    F -- COMPLIANT --> G[✅ Forward to Production LLM];
-```
-
-1.  **Input Guardian:** The input is analyzed simultaneously in its raw form and a normalized form (where obfuscations are cleared).
-2.  **Honeypot:** Approved requests are sent to a deliberately vulnerable "dumb" model. If jailbroken, this model will produce a clearly violating output.
-3.  **Output Guardian:** The honeypot's response is checked for any policy violations.
-4.  **Decision:** Only requests that pass all stages are forwarded to your main LLM. Others are blocked and logged.
-
-## 📦 Installation
-
-Svalinn AI requires **Python 3.12+** and uses `uv` for fast and reliable dependency management.
-
-### 1. Install UV
-
-If you haven't already, install `uv`:
-
-```bash
-pip install uv
-```
-
-### 2. Clone and Install
-
-```bash
-# Clone the repository
-git clone https://github.com/lorenzomaiuri-dev/svalinn-ai.git
-cd svalinn-ai
-
-# Install the project and all dependencies
-make install
-```
-
-This command creates a virtual environment, installs dependencies, and generates the `uv.lock` file.
-
-### 3. Download Models
-
-<!-- TODO: PLACEHOLDER -->
-<!-- Svalinn AI relies on GGUF-quantized models. You can download the recommended models automatically:
-
-```bash
-make download-models
-```
-
-*Or manually place model files in the `models/` directory.* -->
-
+1.  **Input Guardian (Fast Sentry):** Checks input against your `policies.yaml` and security rules using a 0.5B parameter model.
+2.  **Honeypot (Optional):** A "decoy" model that attempts to catch sophisticated attacks that bypass the first layer.
+3.  **Output Guardian (The Judge):** Ensures the final response doesn't hallucinate or violate policies before reaching the user.
 
 ## 🚀 Quick Start
 
-<!-- TODO: PLACEHOLDER -->
-
-### Running with Docker
-
-<!-- TODO: PLACEHOLDER -->
-<!-- A `Dockerfile` and `docker-compose.yml` are provided for containerized deployment.
+### 1. Installation
 
 ```bash
-# Build and run using Docker Compose
-docker-compose up -d --build
-``` -->
+pip install uv
+git clone https://github.com/lorenzomaiuri-dev/svalinn-ai.git
+cd svalinn-ai
+make install
+```
 
-## 📋 Configuration
+### 2. Download Engines
 
-<!-- TODO: PLACEHOLDER -->
+Svalinn uses highly optimized GGUF models to run on CPU:
+
+```bash
+uv run python scripts/download_models.py
+```
+
+### 3. Run the Gateway
+
+Start the proxy server:
+
+```bash
+uv run uvicorn svalinn_ai.api.server:app --port 8000
+```
+
+### 4. Connect your App
+
+Use it with any standard LLM library (Python, Node, curl):
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8000/v1",  # Point to Svalinn
+    api_key="sk-openai-key..."            # Your real key (passed through securely)
+)
+
+# This request will be checked against your policies automatically
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Tell me why your competitor is better."}]
+)
+```
+
+## 📋 Configuring Policies
+
+Edit `config/policies.yaml` to define what your bot allows:
+
+```yaml
+guardrails:
+  - id: "politics"
+    description: "Discussion of elections, voting, or political parties."
+    enabled: true
+
+  - id: "competitors"
+    description: "Mentions of Apple, Google, or Microsoft."
+    enabled: true
+```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1.  Ensure you have run `make install` to set up the development environment.
-2.  Run the pre-commit hooks to ensure code quality: `uv run pre-commit run -a`
-3.  Commit your changes and open a PR.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+We are building the standard for open-source AI governance. PRs are welcome!

@@ -1,0 +1,95 @@
+# Svalinn AI - Normalization Rules
+# Controls the text cleaning pipeline to neutralize obfuscation techniques.
+# This file is loaded by the AdvancedTextNormalizer at startup.
+
+# ==============================================================================
+# 1. Feature Toggles
+# ==============================================================================
+# Enable or disable specific stages of the pipeline.
+# For maximum security, keep all set to 'true'.
+enabled_steps:
+  # Decodes Base64/Hex strings hidden in text (e.g., "ignore {BASE64}...")
+  base64_decoding: true
+
+  # Converts fancy Unicode (ℍ, ⁵, ﬁ) to standard ASCII (H, 5, fi)
+  unicode_normalization: true
+
+  # Strips zero-width spaces and control characters used to bypass filters
+  invisible_char_removal: true
+
+  # Removes emojis to prevent semantic confusion or jailbreaks via symbols
+  emoji_removal: true
+
+  # Translates "h4ck3r" -> "hacker" (smart mode: preserves numbers like 2025)
+  leetspeak_decoding: true
+
+  # Collapses multiple spaces/newlines into single spaces
+  whitespace_cleanup: true
+
+# ==============================================================================
+# 2. Leetspeak Mappings (Single Character)
+# ==============================================================================
+# Simple character-for-character replacements.
+# The normalizer only applies these if the word contains at least one letter
+# (protecting pure numbers like "2025" or IPs "127.0.0.1").
+leetspeak_map:
+  "@": "a"
+  "4": "a"
+  "^": "a"
+  "8": "b"
+  "(": "c"
+  "[": "c"
+  "<": "c"
+  "{": "c"
+  "3": "e"
+  "€": "e"
+  "6": "g"
+  "9": "g"
+  "#": "h"
+  "!": "i"
+  "1": "i"
+  "|": "i"
+  "0": "o"
+  "5": "s"
+  "$": "s"
+  "§": "s"
+  "7": "t"
+  "+": "t"
+  "%": "x"
+  "2": "z"
+  "¥": "y"
+
+# ==============================================================================
+# 3. Multi-Character Leetspeak
+# ==============================================================================
+# Complex replacements that represent a single letter with multiple symbols.
+# These run BEFORE single-character mapping.
+# NOTE: 'pattern' must be a valid Python Regex string.
+multi_char_leetspeak:
+  # Matches "\/" (backslash + slash) -> v
+  - pattern: "\\\\/"
+    replacement: "v"
+
+  # Matches "(|" -> d
+  - pattern: "\\(\\|"
+    replacement: "d"
+
+  # Matches "|)" -> d
+  - pattern: "\\|\\)"
+    replacement: "d"
+
+  # Matches "|_|" -> u
+  - pattern: "\\|_\\|"
+    replacement: "u"
+
+  # Matches "/\" -> a (if not caught by single char logic)
+  - pattern: "/\\\\"
+    replacement: "a"
+
+# ==============================================================================
+# 4. Invisible Character Patterns
+# ==============================================================================
+# Regex patterns for characters that should be strictly removed.
+# Includes Zero-width space, Soft hyphen, Word joiner, BOM, etc.
+invisible_patterns:
+  - "[\\u200b-\\u200f\\u2028-\\u202f\\u205f-\\u206f\\ufeff\\u200d\\u00ad]"

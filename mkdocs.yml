@@ -9,7 +9,9 @@ copyright: Maintained by <a href="https://lorenzomaiuri.dev">Lorenzo Maiuri</a>.
 
 nav:
   - Home: index.md
-  - Modules: modules.md
+  - Architecture: architecture.md
+  - Roadmap: roadmap.md
+  - API Reference: modules.md
 plugins:
   - search
   - mkdocstrings:
