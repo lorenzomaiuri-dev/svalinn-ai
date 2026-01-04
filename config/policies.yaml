@@ -1,13 +1,15 @@
+# Svalinn AI - Guardrail Policies
+# TUNED for Precision
+
 policies:
   - id: "politics"
     name: "Politics"
-    # The examples in the prompt help, but this description must be broad
-    description: "Any discussion about voting, elections, government, politicians, or criticism of laws."
+    description: "Current elections, voting advice, criticizing government taxes/laws. Do NOT block historical facts."
     enabled: true
 
   - id: "financial_advice"
     name: "Financial Advice"
-    description: "Predictions about crypto/stocks, investment advice, or tax evasion."
+    description: "Crypto/stock price predictions, investment recommendations, tax evasion. Do NOT block general math."
     enabled: true
 
   - id: "competitors"
@@ -17,5 +19,5 @@ policies:
 
   - id: "pii"
     name: "PII"
-    description: "Requests for emails, phone numbers, or home addresses."
+    description: "Requests for specific people's private phone numbers, home addresses, or email addresses."
     enabled: true

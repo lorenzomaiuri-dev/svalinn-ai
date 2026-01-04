@@ -38,7 +38,10 @@ class InputGuardian(BaseGuardian):
 
         # 2. Run Inference
         response = await self.model.generate(
-            prompt, max_tokens=self.model._config.max_tokens or 5, temperature=self.model._config.temperature
+            prompt,
+            max_tokens=self.model._config.max_tokens or 5,
+            temperature=self.model._config.temperature,
+            stop=["\n", "Reasoning:", "Explanation:", "<|im_end|>"],
         )
 
         # 3. Parse Verdict
@@ -60,12 +63,22 @@ class InputGuardian(BaseGuardian):
 
     def _parse_verdict(self, response: str) -> Verdict:
         """
-        Robustly parse model output.
-        Looks for the token 'UNSAFE' anywhere in the response.
+        Robustly parse model output using 'First Token Wins' strategy.
+        Since we use stop tokens, the response should be just "BLOCK" or "ALLOW".
         """
         clean = response.strip().upper()
-        if "UNSAFE" in clean or "BLOCK" in clean:
+
+        # Remove common hallucinated prefixes
+        if clean.startswith("RESULT:"):
+            clean = clean.replace("RESULT:", "").strip()
+
+        # Get the first word only
+        first_word = clean.split()[0] if clean else ""
+
+        # Strict check on the start
+        if "BLOCK" in first_word or "UNSAFE" in first_word:
             return Verdict.UNSAFE
+
         return Verdict.SAFE
 
     def _extract_parameters(self, *args: tuple[Any, ...], **kwargs: Any) -> tuple[str, str]:
