@@ -44,7 +44,7 @@ class OutputGuardian(BaseGuardian):
 
     def _parse_verdict(self, response: str) -> Verdict:
         clean = response.strip().upper()
-        if "VIOLATION" in clean or "UNSAFE" in clean:
+        if "VIOLATION" in clean or "UNSAFE" in clean or "BLOCK" in clean:
             return Verdict.UNSAFE
         return Verdict.SAFE
 

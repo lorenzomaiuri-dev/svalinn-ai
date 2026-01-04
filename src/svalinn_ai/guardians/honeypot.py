@@ -34,8 +34,6 @@ class HoneypotExecutor(BaseGuardian):
                 max_tokens=self.model._config.max_tokens or 64,
             )
 
-            print(generated_text)
-
             processing_time = int((time.time() - start_time) * 1000)
 
             return HoneypotResponse(
