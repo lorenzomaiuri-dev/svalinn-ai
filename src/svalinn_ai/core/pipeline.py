@@ -9,6 +9,7 @@ import yaml
 from ..guardians.honeypot import HoneypotExecutor
 from ..guardians.input_guardian import InputGuardian
 from ..guardians.output_guardian import OutputGuardian
+from ..utils.analytics import AnalyticsEngine
 from ..utils.logger import get_logger
 from ..utils.metrics import MetricsCollector
 from .models import ModelManager
@@ -67,8 +68,10 @@ class SvalinnAIPipeline:
         model_config_path = (config_dir / "models.yaml") if config_dir else None
         self.model_manager = ModelManager(model_config_path)
 
-        # 5. Initialize Metrics
+        # 5. Initialize Metrics and Analytics
         self.metrics = MetricsCollector()
+        data_dir = Path("data")
+        self.analytics = AnalyticsEngine(data_dir / "svalinn_logs.duckdb")
 
         # 6. Initialize Guardians
         self.input_guardian = InputGuardian(self.model_manager, self.prompt_manager)
@@ -145,6 +148,12 @@ class SvalinnAIPipeline:
             )
 
             self.metrics.record_request(result)
+            if self.analytics:
+                self.analytics.log_request(
+                    result=result,
+                    raw_input=user_input,
+                    anonymize=False,  # TODO: Make configurable via config.yaml
+                )
 
         except Exception:
             logger.exception(f"Error processing request {request.id}")
@@ -160,6 +169,12 @@ class SvalinnAIPipeline:
                 should_forward=False,
             )
             self.metrics.record_request(result)
+            if self.analytics:
+                self.analytics.log_request(
+                    result=result,
+                    raw_input=user_input,
+                    anonymize=False,  # TODO: Make configurable via config.yaml
+                )
             return result
         else:
             return result

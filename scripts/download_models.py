@@ -19,9 +19,8 @@ MODEL_DIR = Path("models")
 # Model Definitions
 MODELS = {
     "input_output_guardian": {
-        # Using bartowski's quants (highly reliable community standard)
-        "repo_id": "bartowski/Phi-3.5-mini-instruct-GGUF",
-        "filename": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+        "repo_id": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+        "filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
     },
     "honeypot": {
         # Official Qwen GGUF repository
