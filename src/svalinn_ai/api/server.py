@@ -5,7 +5,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from ..core.pipeline import SvalinnAIPipeline
 from .analyze import router as analyze_router
@@ -72,7 +72,7 @@ app.include_router(system_router)
 
 
 @app.get("/health")
-async def health_check() -> JSONResponse | dict:
+async def health_check() -> Response:
     if not getattr(app.state, "pipeline", None):
         return JSONResponse({"status": "starting"}, status_code=503)
     stats = await app.state.pipeline.health_check()
