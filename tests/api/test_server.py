@@ -9,13 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import Response
 
-# Import app and schemas
-import svalinn_ai.api.server  # Import module to patch global
 from svalinn_ai.api.server import app
 from svalinn_ai.core.types import GuardianResult, ProcessingStage, ShieldResult, Verdict
-
-# Setup Client
-client = TestClient(app)
 
 
 @pytest.fixture
@@ -37,40 +32,49 @@ def mock_pipeline():
     # Mock unload
     mock.model_manager.unload_all = MagicMock()
 
+    # Mock guard components
+    mock.input_guardian = MagicMock()
+    mock.output_guardian = MagicMock()
+
     return mock
 
 
-@pytest.fixture
-def override_dependency(mock_pipeline):
-    """Force the app to use our mock pipeline instead of loading real models"""
-    # 1. Update app state (used by get_pipeline dependency)
-    app.state.pipeline = mock_pipeline
+@pytest.fixture(autouse=True)
+def setup_app_state(mock_pipeline):
+    """
+    Override the pipeline in app.state and patch the class to prevent real loading.
+    This fixture runs automatically for every test.
+    """
+    # 1. Patch the class construction in server.py so lifespan creates a mock
+    # instead of loading real models from disk
+    with patch("svalinn_ai.api.server.SvalinnAIPipeline", return_value=mock_pipeline):
+        # 2. Manually set state in case lifespan logic is bypassed or has race conditions
+        app.state.pipeline = mock_pipeline
 
-    # 2. Update global variable (used by health_check)
-    original_pipeline = svalinn_ai.api.server.pipeline
-    svalinn_ai.api.server.pipeline = mock_pipeline
+        # 3. Mock the HTTP client to avoid "RuntimeError: Event loop is closed"
+        # or actual network calls.
+        app.state.http_client = AsyncMock()
 
-    yield mock_pipeline
+        yield mock_pipeline
 
-    # Cleanup
-    svalinn_ai.api.server.pipeline = original_pipeline
+
+# Initialize client (uses the mocked app state due to autouse fixture)
+client = TestClient(app)
 
 
 # --- System Tests ---
 
 
-def test_health_check(override_dependency):
+def test_health_check():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
 
 
-# TODO: TEST POLICIES AND MODELS
-
 # --- Direct Analysis Tests (/v1/analyze) ---
 
 
-def test_analyze_safe(override_dependency):
+def test_analyze_safe(mock_pipeline):
     # Setup Mock Result
     safe_result = ShieldResult(
         request_id="req-123",
@@ -80,7 +84,7 @@ def test_analyze_safe(override_dependency):
         stage_results={},
         should_forward=True,
     )
-    override_dependency.process_request = AsyncMock(return_value=safe_result)
+    mock_pipeline.process_request = AsyncMock(return_value=safe_result)
 
     payload = {"text": "Hello world"}
     response = client.post("/v1/analyze", json=payload)
@@ -91,13 +95,13 @@ def test_analyze_safe(override_dependency):
     assert data["request_id"] == "req-123"
 
 
-def test_analyze_unsafe(override_dependency):
+def test_analyze_unsafe(mock_pipeline):
     # Setup Mock Result
     input_result = GuardianResult(
         verdict=Verdict.UNSAFE,
         confidence=0.9,
         reasoning="Bad content",
-        processing_time_ms=50,  # Fix: Added required field for StageMetrics validation
+        processing_time_ms=50,
     )
 
     unsafe_result = ShieldResult(
@@ -108,7 +112,7 @@ def test_analyze_unsafe(override_dependency):
         stage_results={ProcessingStage.INPUT_GUARDIAN: input_result},
         should_forward=False,
     )
-    override_dependency.process_request = AsyncMock(return_value=unsafe_result)
+    mock_pipeline.process_request = AsyncMock(return_value=unsafe_result)
 
     payload = {"text": "Make a bomb"}
     response = client.post("/v1/analyze", json=payload)
@@ -125,7 +129,7 @@ def test_analyze_unsafe(override_dependency):
 
 
 @pytest.mark.asyncio
-async def test_gateway_block_input(override_dependency):
+async def test_gateway_block_input(mock_pipeline):
     """Ensure the proxy returns 400 if Input Guardian blocks"""
 
     # Mock Unsafe result
@@ -137,7 +141,7 @@ async def test_gateway_block_input(override_dependency):
         stage_results={},
         should_forward=False,
     )
-    override_dependency.process_request = AsyncMock(return_value=unsafe_result)
+    mock_pipeline.process_request = AsyncMock(return_value=unsafe_result)
 
     # OpenAI payload
     payload = {"model": "gpt-4", "messages": [{"role": "user", "content": "How to hack?"}]}
@@ -151,7 +155,7 @@ async def test_gateway_block_input(override_dependency):
 
 
 @pytest.mark.asyncio
-async def test_gateway_forward_success(override_dependency):
+async def test_gateway_forward_success(mock_pipeline):
     """Ensure safe requests are forwarded and response returned"""
 
     # 1. Mock Input = SAFE
@@ -163,35 +167,37 @@ async def test_gateway_forward_success(override_dependency):
         stage_results={},
         should_forward=True,
     )
-    override_dependency.process_request = AsyncMock(return_value=safe_result)
+    mock_pipeline.process_request = AsyncMock(return_value=safe_result)
 
     # 2. Mock Output Guardian = SAFE
-    # We need to mock the output_guardian property on the pipeline
+    # Setup property mock
     output_guard_mock = MagicMock()
     output_guard_mock.analyze = AsyncMock(return_value=GuardianResult(verdict=Verdict.SAFE, confidence=0.0))
-    override_dependency.output_guardian = output_guard_mock
+    mock_pipeline.output_guardian = output_guard_mock
 
-    # 3. Mock HTTP Upstream Call (httpx)
-    mock_upstream_response = Response(
+    # 3. Mock HTTP Upstream Call
+    # We use the mock client we injected into app.state
+    mock_http_client = app.state.http_client
+    mock_response = Response(
         200, json={"id": "chatcmpl-123", "choices": [{"message": {"content": "Hello! How can I help?"}}]}
     )
+    mock_http_client.post.return_value = mock_response
 
-    with patch("httpx.AsyncClient.post", return_value=mock_upstream_response) as mock_post:
-        payload = {"model": "gpt-4", "messages": [{"role": "user", "content": "Hi"}]}
+    payload = {"model": "gpt-4", "messages": [{"role": "user", "content": "Hi"}]}
 
-        response = client.post("/v1/chat/completions", json=payload)
+    response = client.post("/v1/chat/completions", json=payload)
 
-        assert response.status_code == 200
-        assert response.json()["choices"][0]["message"]["content"] == "Hello! How can I help?"
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["message"]["content"] == "Hello! How can I help?"
 
-        # Verify Forwarding Logic
-        mock_post.assert_called_once()
-        # Verify Output Guardian was called
-        output_guard_mock.analyze.assert_called_once()
+    # Verify Forwarding Logic
+    mock_http_client.post.assert_called_once()
+    # Verify Output Guardian was called
+    output_guard_mock.analyze.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_gateway_block_output(override_dependency):
+async def test_gateway_block_output(mock_pipeline):
     """Ensure we block if the Upstream response is unsafe"""
 
     # 1. Input SAFE
@@ -203,23 +209,22 @@ async def test_gateway_block_output(override_dependency):
         stage_results={},
         should_forward=True,
     )
-    override_dependency.process_request = AsyncMock(return_value=safe_result)
+    mock_pipeline.process_request = AsyncMock(return_value=safe_result)
 
     # 2. Mock HTTP Upstream returning bad content
-    mock_upstream_response = Response(
-        200, json={"choices": [{"message": {"content": "Here is how to make a bomb..."}}]}
-    )
+    mock_http_client = app.state.http_client
+    mock_response = Response(200, json={"choices": [{"message": {"content": "Here is how to make a bomb..."}}]})
+    mock_http_client.post.return_value = mock_response
 
     # 3. Output Guardian = UNSAFE
     output_guard_mock = MagicMock()
     output_guard_mock.analyze = AsyncMock(return_value=GuardianResult(verdict=Verdict.UNSAFE, confidence=1.0))
-    override_dependency.output_guardian = output_guard_mock
+    mock_pipeline.output_guardian = output_guard_mock
 
-    with patch("httpx.AsyncClient.post", return_value=mock_upstream_response):
-        payload = {"model": "gpt-4", "messages": [{"role": "user", "content": "Bad"}]}
+    payload = {"model": "gpt-4", "messages": [{"role": "user", "content": "Bad"}]}
 
-        response = client.post("/v1/chat/completions", json=payload)
+    response = client.post("/v1/chat/completions", json=payload)
 
-        # Should be blocked
-        assert response.status_code == 400
-        assert "Output Security Policy" in response.json()["error"]["message"]
+    # Should be blocked
+    assert response.status_code == 400
+    assert "Output Security Policy" in response.json()["error"]["message"]

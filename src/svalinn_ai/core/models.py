@@ -44,6 +44,7 @@ class ModelConfig:
     max_tokens: int = 64
     n_gpu_layers: int = 0
     n_threads: int | None = None
+    enabled: bool = True  # Default to True for backward compatibility
 
 
 class ThreadSafeModel:
@@ -133,18 +134,21 @@ class ModelManager:
                 "path": "models/phi-3.5-mini-instruct-q4_k_m.gguf",
                 "temperature": 0.0,
                 "context_length": 4096,
+                "enabled": True,
             },
             "honeypot": {
                 "name": "qwen/Qwen2.5-1.5B-Instruct",
                 "path": "models/qwen2.5-1.5b-instruct-q4_k_m.gguf",
                 "temperature": 0.8,
                 "context_length": 8192,
+                "enabled": True,
             },
             "output_guardian": {
                 "name": "microsoft/Phi-3.5-mini-instruct",
                 "path": "models/phi-3.5-mini-instruct-q4_k_m.gguf",
                 "temperature": 0.0,
                 "context_length": 4096,
+                "enabled": True,
             },
         }
 
@@ -163,17 +167,24 @@ class ModelManager:
             data = loaded_data.get(key, default_config[key])
             self._config_cache[key] = ModelConfig(**data)
 
+    def get_config(self, model_key: str) -> ModelConfig:
+        """Get the configuration object for a specific model key."""
+        config = self._config_cache.get(model_key)
+        if not config:
+            raise ModelConfigurationError(model_key)
+        return config
+
     def load_model(self, model_key: str) -> ThreadSafeModel:
         """
         Load a model by its configuration key (e.g., 'input_guardian').
         If the underlying model file is already loaded, returns the existing instance.
         """
-        config = self._config_cache.get(model_key)
-        if not config:
-            raise ModelConfigurationError(model_key)
+        config = self.get_config(model_key)
+
+        if not config.enabled:
+            logger.warning(f"Attempting to load disabled model: {model_key}")
 
         # Resolve absolute path to use as the cache key
-        # This ensures specific models are loaded only once regardless of config alias
         try:
             model_path_abs = str(Path(config.path).resolve())
         except OSError:
@@ -183,8 +194,6 @@ class ModelManager:
         # 1. Check Cache (Shared Memory Strategy)
         if model_path_abs in self._loaded_models:
             logger.debug(f"Using cached model instance for {model_key} ({model_path_abs})")
-            # Return existing wrapper but we might want to update config if needed?
-            # For now, we share the wrapper. Note: config params like temp are passed at generation time.
             return self._loaded_models[model_path_abs]
 
         # 2. Load Model
