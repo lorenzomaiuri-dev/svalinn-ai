@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,7 +18,7 @@ logger = logging.getLogger("svalinn.api")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Application Lifespan Manager.
     Loads models and persistent connections on startup.
@@ -71,7 +72,7 @@ app.include_router(system_router)
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> JSONResponse | dict:
     if not getattr(app.state, "pipeline", None):
         return JSONResponse({"status": "starting"}, status_code=503)
     stats = await app.state.pipeline.health_check()

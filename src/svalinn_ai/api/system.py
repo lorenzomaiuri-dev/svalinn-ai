@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -23,11 +23,11 @@ class SystemStatus(BaseModel):
 
 
 async def get_pipeline(request: Request) -> SvalinnAIPipeline:
-    return request.app.state.pipeline
+    return cast(SvalinnAIPipeline, request.app.state.pipeline)
 
 
 @router.get("/v1/system/status", response_model=SystemStatus, tags=["System"])
-async def get_system_status(pipeline: Annotated[SvalinnAIPipeline, Depends(get_pipeline)]):
+async def get_system_status(pipeline: Annotated[SvalinnAIPipeline, Depends(get_pipeline)]) -> SystemStatus:
     """
     Get current system health and active configuration.
     """
@@ -35,7 +35,7 @@ async def get_system_status(pipeline: Annotated[SvalinnAIPipeline, Depends(get_p
     health = await pipeline.health_check()
 
     # TODO: GET POLICIES AND MODELS
-    policies = []
+    policies: list[PolicyInfo] = []
 
     return SystemStatus(
         status=health["status"],

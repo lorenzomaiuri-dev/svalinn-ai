@@ -26,6 +26,15 @@ logger = get_logger(__name__)
 
 
 class SvalinnAIPipeline:
+    prompt_manager: PromptManager
+    normalizer: AdvancedTextNormalizer
+    model_manager: ModelManager
+    metrics: MetricsCollector
+    analytics: AnalyticsEngine
+    input_guardian: InputGuardian | None
+    honeypot: HoneypotExecutor | None
+    output_guardian: OutputGuardian | None
+
     def __init__(self, config_dir: Path | None = None):
         """
         Initialize the Svalinn AI Pipeline.

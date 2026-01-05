@@ -138,18 +138,26 @@ class AnalyticsEngine:
     def get_stats(self) -> dict[str, Any]:
         """Query basic statistics for the Health/System endpoint."""
         try:
-            total = self.conn.execute("SELECT COUNT(*) FROM traffic_logs").fetchone()[0]
-            unsafe = self.conn.execute("SELECT COUNT(*) FROM traffic_logs WHERE final_verdict = 'UNSAFE'").fetchone()[0]
-            avg_lat = self.conn.execute("SELECT AVG(total_latency_ms) FROM traffic_logs").fetchone()[0] or 0
+            res_total = self.conn.execute("SELECT COUNT(*) FROM traffic_logs").fetchone()
+            total = res_total[0] if res_total else 0
+
+            res_unsafe = self.conn.execute(
+                "SELECT COUNT(*) FROM traffic_logs WHERE final_verdict = 'UNSAFE'"
+            ).fetchone()
+            unsafe = res_unsafe[0] if res_unsafe else 0
+
+            res_avg = self.conn.execute("SELECT AVG(total_latency_ms) FROM traffic_logs").fetchone()
+            avg_lat = res_avg[0] if res_avg and res_avg[0] is not None else 0
 
             return {
                 "total_requests": total,
                 "requests_blocked": unsafe,
                 "block_rate": round((unsafe / total * 100), 2) if total > 0 else 0.0,
-                "avg_latency_ms": round(avg_lat, 2),
+                "avg_latency_ms": round(float(avg_lat), 2),
             }
         except Exception:
+            logger.exception("Failed to query statistics")
             return {}
 
-    def close(self):
+    def close(self) -> None:
         self.conn.close()

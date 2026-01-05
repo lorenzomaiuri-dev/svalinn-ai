@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Annotated
+from typing import Annotated, cast
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -20,7 +20,7 @@ UPSTREAM_BASE_URL = os.getenv("UPSTREAM_BASE_URL", "https://api.openai.com/v1")
 
 async def get_pipeline(request: Request) -> SvalinnAIPipeline:
     """Dependency to retrieve the pipeline from app state"""
-    pipeline = request.app.state.pipeline
+    pipeline = cast(SvalinnAIPipeline, request.app.state.pipeline)
     if not pipeline:
         raise HTTPException(status_code=503, detail="Security layer initializing")
     return pipeline
@@ -28,7 +28,7 @@ async def get_pipeline(request: Request) -> SvalinnAIPipeline:
 
 async def get_http_client(request: Request) -> httpx.AsyncClient:
     """Dependency to get shared HTTP client"""
-    return request.app.state.http_client
+    return cast(httpx.AsyncClient, request.app.state.http_client)
 
 
 @router.post("/v1/chat/completions")
@@ -38,7 +38,7 @@ async def openai_proxy(
     pipeline: Annotated[SvalinnAIPipeline, Depends(get_pipeline)],
     client: Annotated[httpx.AsyncClient, Depends(get_http_client)],
     authorization: str | None = Header(None),
-):
+) -> Response:
     """
     OpenAI-Compatible Endpoint (Reverse Proxy).
     """
@@ -57,7 +57,7 @@ async def openai_proxy(
                 status_code=400,
                 content={
                     "error": {
-                        "message": f"Request blocked by Svalinn Guardrails ({shield_result.blocked_by.name}).",
+                        "message": f"Request blocked by Svalinn Guardrails ({shield_result.blocked_by}).",
                         "type": "invalid_request_error",
                         "param": "prompt",
                         "code": "security_policy_violation",

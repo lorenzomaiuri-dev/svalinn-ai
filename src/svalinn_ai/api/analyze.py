@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -11,14 +11,16 @@ router = APIRouter()
 
 
 async def get_pipeline(request: Request) -> SvalinnAIPipeline:
-    pipeline = request.app.state.pipeline
+    pipeline = cast(SvalinnAIPipeline, request.app.state.pipeline)
     if not pipeline:
         raise HTTPException(status_code=503, detail="System initializing")
     return pipeline
 
 
 @router.post("/v1/analyze", response_model=AnalysisResponse, tags=["Internal Tools"])
-async def analyze_text(payload: AnalysisRequest, pipeline: Annotated[SvalinnAIPipeline, Depends(get_pipeline)]):
+async def analyze_text(
+    payload: AnalysisRequest, pipeline: Annotated[SvalinnAIPipeline, Depends(get_pipeline)]
+) -> AnalysisResponse:
     """
     Direct Classification Endpoint.
     Analyzes text and returns full security metadata.
