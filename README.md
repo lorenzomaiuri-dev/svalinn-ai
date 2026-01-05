@@ -12,7 +12,6 @@ Svalinn AI is a self-hosted proxy that sits between your users and your LLM (Ope
 
 Stop building custom moderation chains. Just point your API client to Svalinn.
 
-- **Github repository**: <https://github.com/lorenzomaiuri-dev/svalinn-ai/>
 - **Documentation**: <https://lorenzomaiuri-dev.github.io/svalinn-ai/>
 
 ## 🎯 Why use Svalinn?
