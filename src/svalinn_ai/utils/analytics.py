@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class AnalyticsEngine:
     """
     DuckDB-backed analytics engine for structured logging.
-    Stores request telemetry, verdicts, and latency metrics.
+    Stores request telemetry, verdicts, latency metrics, and full model outputs.
     """
 
     def __init__(self, db_path: Path):
@@ -49,33 +49,54 @@ class AnalyticsEngine:
 
     def log_request(self, result: ShieldResult, raw_input: str, anonymize: bool = False) -> None:
         """
-        Log a processed request to DuckDB.
+        Log a processed request to DuckDB including full model reasoning.
 
         Args:
             result: The ShieldResult object from the pipeline.
             raw_input: The original user text.
-            anonymize: If True, do not store raw_input (store NULL or Hash).
+            anonymize: If True, do not store raw_input (store ANONYMIZED).
         """
         try:
-            # 1. Extract Metadata
-            # Try to find specific policy info from the reasoning text
+            # 1. Extract High-Level Metadata
+            # Try to find specific policy info from the reasoning text for the 'policy_violated' column
             policy_violated = None
             if result.final_verdict == Verdict.UNSAFE and result.blocked_by:
                 stage_res = result.stage_results.get(result.blocked_by)
-                if stage_res and stage_res.reasoning:
-                    # Simple heuristic: extract reasoning as policy violation context
-                    policy_violated = stage_res.reasoning[:100]  # Store snippet
+                if stage_res and hasattr(stage_res, "reasoning") and stage_res.reasoning:
+                    # Keep the column version short for quick SQL grouping
+                    policy_violated = stage_res.reasoning[:100]
 
             # 2. Handle Privacy
             stored_input = "ANONYMIZED" if anonymize else raw_input
 
-            # 3. Prepare Metadata JSON (Stage breakdowns)
-            stage_metrics = {}
+            # 3. Prepare Detailed Metadata JSON
+            stage_details = {}
             for stage, res in result.stage_results.items():
-                if hasattr(res, "processing_time_ms"):
-                    stage_metrics[stage.value] = res.processing_time_ms
+                detail = {}
 
-            metadata_json = json.dumps({"stage_latency": stage_metrics, "should_forward": result.should_forward})
+                # Capture Latency
+                if hasattr(res, "processing_time_ms"):
+                    detail["latency_ms"] = res.processing_time_ms
+
+                # Capture Guardian Reasoning (Input/Output Guardians)
+                if hasattr(res, "reasoning") and res.reasoning:
+                    detail["full_output"] = res.reasoning
+
+                # Capture Honeypot Generation
+                if hasattr(res, "generated_text") and res.generated_text:
+                    detail["full_output"] = res.generated_text
+
+                # Capture Verdicts
+                if hasattr(res, "verdict"):
+                    detail["verdict"] = res.verdict.value
+
+                # Capture internal metadata (model names, token counts, etc.)
+                if hasattr(res, "metadata") and res.metadata:
+                    detail["meta"] = res.metadata
+
+                stage_details[stage.value] = detail
+
+            metadata_json = json.dumps({"stages": stage_details, "should_forward": result.should_forward})
 
             # 4. Insert
             query = """
@@ -91,7 +112,9 @@ class AnalyticsEngine:
 
             # Determine lengths safely
             in_len = len(raw_input)
-            norm_len = len(result.stage_results)  # Proxy, usually available in request obj
+            # Normalized length is not strictly tracked in ShieldResult top-level,
+            # but we can default to 0 or calculate if available in stage metadata
+            norm_len = 0
 
             self.conn.execute(
                 query,

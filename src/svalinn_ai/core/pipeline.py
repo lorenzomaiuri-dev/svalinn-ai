@@ -16,8 +16,6 @@ from .models import ModelManager
 from .normalizer import AdvancedTextNormalizer
 from .prompts import PromptManager
 from .types import (
-    GuardianResult,
-    HoneypotResponse,
     ProcessingStage,
     ShieldRequest,
     ShieldResult,
@@ -43,7 +41,7 @@ class SvalinnAIPipeline:
                 config_dir = cwd_config
                 logger.debug(f"Auto-detected config directory: {config_dir.absolute()}")
 
-        # 2. Initialize Prompt Manager (Needs to be early to load policies)
+        # 2. Initialize Prompt Manager
         self.prompt_manager = PromptManager(config_dir)
 
         # 3. Load Normalization Configuration
@@ -74,110 +72,123 @@ class SvalinnAIPipeline:
         self.analytics = AnalyticsEngine(data_dir / "svalinn_logs.duckdb")
 
         # 6. Initialize Guardians
-        self.input_guardian = InputGuardian(self.model_manager, self.prompt_manager)
-        self.honeypot = HoneypotExecutor(self.model_manager, self.prompt_manager)
-        self.output_guardian = OutputGuardian(self.model_manager, self.prompt_manager)
+
+        # Input Guardian is core, usually enabled, but we check config anyway
+        if self._is_model_enabled("input_guardian"):
+            self.input_guardian = InputGuardian(self.model_manager, self.prompt_manager)
+        else:
+            self.input_guardian = None
+            logger.warning("Input Guardian is DISABLED in config.")
+
+        # Honeypot
+        if self._is_model_enabled("honeypot"):
+            self.honeypot = HoneypotExecutor(self.model_manager, self.prompt_manager)
+        else:
+            self.honeypot = None
+            logger.info("Honeypot disabled (Speed Mode).")
+
+        # Output Guardian
+        if self._is_model_enabled("output_guardian"):
+            self.output_guardian = OutputGuardian(self.model_manager, self.prompt_manager)
+        else:
+            self.output_guardian = None
+            logger.info("Output Guardian disabled (Speed Mode).")
 
         logger.info("svalinn-ai pipeline initialized")
+
+    def _is_model_enabled(self, key: str) -> bool:
+        """Helper to check model config status"""
+        try:
+            return self.model_manager.get_config(key).enabled
+        except Exception:
+            return True  # Default to True if config missing
 
     async def process_request(self, user_input: str) -> ShieldResult:
         """Main processing pipeline"""
         start_time = time.time()
-
-        # Create request object
         request = ShieldRequest(id=str(uuid.uuid4()), user_input=user_input, timestamp=datetime.now())
-
-        stage_results: dict[ProcessingStage, GuardianResult | HoneypotResponse | ShieldRequest] = {}
+        stage_results: dict[ProcessingStage, Any] = {}
 
         try:
             # Stage 1: Text Normalization
             normalized_input = self.normalizer.normalize(user_input)
             request.normalized_input = normalized_input
 
-            obfuscation_analysis = self.normalizer.detect_obfuscation(user_input, normalized_input)
-            logger.debug(f"Request {request.id}: Obfuscation analysis: {obfuscation_analysis}")
+            # Stage 2: Input Guardian (If Enabled)
+            if self.input_guardian:
+                input_result = await self.input_guardian.analyze(user_input, normalized_input)
+                stage_results[ProcessingStage.INPUT_GUARDIAN] = input_result
 
-            # Stage 2: Input Guardian (Dual-Channel Analysis)
-            input_result = await self.input_guardian.analyze(user_input, normalized_input)
-            stage_results[ProcessingStage.INPUT_GUARDIAN] = input_result
+                if input_result.verdict == Verdict.UNSAFE:
+                    return self._finalize_result(
+                        request, Verdict.UNSAFE, ProcessingStage.INPUT_GUARDIAN, stage_results, start_time, False
+                    )
 
-            if input_result.verdict == Verdict.UNSAFE:
-                total_time = int((time.time() - start_time) * 1000)
-                result = ShieldResult(
-                    request_id=request.id,
-                    final_verdict=Verdict.UNSAFE,
-                    blocked_by=ProcessingStage.INPUT_GUARDIAN,
-                    total_processing_time_ms=total_time,
-                    stage_results=stage_results,
-                    should_forward=False,
-                )
-                self.metrics.record_request(result)
-                logger.info(f"Request {request.id} blocked by Input Guardian")
-                return result
-
-            # Stage 3: Honeypot Execution
-            honeypot_response = await self.honeypot.execute(user_input)
-            stage_results[ProcessingStage.HONEYPOT] = honeypot_response
-
-            # Stage 4: Output Guardian
-            output_result = await self.output_guardian.analyze(
-                original_request=user_input, generated_response=honeypot_response.generated_text
-            )
-            stage_results[ProcessingStage.OUTPUT_GUARDIAN] = output_result
-
-            # Final Decision
-            if output_result.verdict == Verdict.UNSAFE:
-                final_verdict = Verdict.UNSAFE
-                blocked_by = ProcessingStage.OUTPUT_GUARDIAN
-                should_forward = False
-                logger.info(f"Request {request.id} blocked by Output Guardian")
+            # Stage 3: Honeypot Execution (If Enabled)
+            honeypot_response = None
+            if self.honeypot:
+                honeypot_response = await self.honeypot.execute(user_input)
+                stage_results[ProcessingStage.HONEYPOT] = honeypot_response
             else:
-                final_verdict = Verdict.SAFE
-                blocked_by = None
-                should_forward = True
-                logger.info(f"Request {request.id} approved - forwarding to production LLM")
+                # If honeypot is disabled, we cannot run internal Output Guardian check
+                # We consider this "Speed Mode" success
+                return self._finalize_result(request, Verdict.SAFE, None, stage_results, start_time, True)
 
-            total_time = int((time.time() - start_time) * 1000)
-            result = ShieldResult(
-                request_id=request.id,
-                final_verdict=final_verdict,
-                blocked_by=blocked_by,
-                total_processing_time_ms=total_time,
-                stage_results=stage_results,
-                should_forward=should_forward,
-            )
-
-            self.metrics.record_request(result)
-            if self.analytics:
-                self.analytics.log_request(
-                    result=result,
-                    raw_input=user_input,
-                    anonymize=False,  # TODO: Make configurable via config.yaml
+            # Stage 4: Output Guardian (If Enabled and Honeypot ran)
+            output_result = None
+            if self.output_guardian and honeypot_response:
+                output_result = await self.output_guardian.analyze(
+                    original_request=user_input, generated_response=honeypot_response.generated_text
                 )
+                stage_results[ProcessingStage.OUTPUT_GUARDIAN] = output_result
+
+                if output_result.verdict == Verdict.UNSAFE:
+                    return self._finalize_result(
+                        request, Verdict.UNSAFE, ProcessingStage.OUTPUT_GUARDIAN, stage_results, start_time, False
+                    )
+
+            # Final Decision: SAFE
+            return self._finalize_result(request, Verdict.SAFE, None, stage_results, start_time, True)
 
         except Exception:
             logger.exception(f"Error processing request {request.id}")
-            total_time = int((time.time() - start_time) * 1000)
+            # Fail-safe: Block on internal error
+            return self._finalize_result(request, Verdict.UNSAFE, None, stage_results, start_time, False)
 
-            # Fail-safe: block on error
-            result = ShieldResult(
-                request_id=request.id,
-                final_verdict=Verdict.UNSAFE,
-                blocked_by=None,
-                total_processing_time_ms=total_time,
-                stage_results=stage_results,
-                should_forward=False,
-            )
-            self.metrics.record_request(result)
-            if self.analytics:
-                self.analytics.log_request(
-                    result=result,
-                    raw_input=user_input,
-                    anonymize=False,  # TODO: Make configurable via config.yaml
-                )
-            return result
-        else:
-            return result
+    def _finalize_result(
+        self,
+        request: ShieldRequest,
+        verdict: Verdict,
+        blocked_by: ProcessingStage | None,
+        stages: dict,
+        start_time: float,
+        forward: bool,
+    ) -> ShieldResult:
+        """Helper to construct result and log it"""
+        total_time = int((time.time() - start_time) * 1000)
+
+        if verdict == Verdict.UNSAFE and blocked_by:
+            logger.info(f"Request {request.id} blocked by {blocked_by.value}")
+        elif verdict == Verdict.SAFE:
+            logger.info(f"Request {request.id} approved")
+
+        result = ShieldResult(
+            request_id=request.id,
+            final_verdict=verdict,
+            blocked_by=blocked_by,
+            total_processing_time_ms=total_time,
+            stage_results=stages,
+            should_forward=forward,
+        )
+
+        # 1. Update Metrics
+        self.metrics.record_request(result)
+
+        # 2. Log to Analytics (Async safe via DuckDB)
+        if hasattr(self, "analytics") and self.analytics:
+            self.analytics.log_request(result, request.user_input)
+
+        return result
 
     async def health_check(self) -> dict[str, Any]:
         """System health check"""
@@ -193,7 +204,10 @@ class SvalinnAIPipeline:
 
     def _get_memory_usage(self) -> float:
         """Get current memory usage in MB"""
-        import psutil
+        try:
+            import psutil
 
-        process = psutil.Process()
-        return float(process.memory_info().rss / 1024 / 1024)
+            process = psutil.Process()
+            return float(process.memory_info().rss / 1024 / 1024)
+        except ImportError:
+            return 0.0
