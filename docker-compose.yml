@@ -1,0 +1,25 @@
+services:
+  svalinn:
+    build: .
+    image: svalinn-ai:latest
+    container_name: svalinn_core
+    ports:
+      - "8000:8000"
+    environment:
+      # Set to false if you want to manage models manually
+      - AUTO_DOWNLOAD_MODELS=true
+      # Point to your real upstream LLM (OpenAI, local Ollama, etc.)
+      - UPSTREAM_BASE_URL=https://api.openai.com/v1
+    volumes:
+      # Persist the downloaded models so we don't redownload on restart
+      - ./models:/app/models
+      # Persist the DuckDB logs
+      - ./data:/app/data
+      # (Optional) Mount local config to override defaults
+      - ./config:/app/config
+    restart: unless-stopped
+    # Limit resources (optional, but good for testing limits)
+    deploy:
+      resources:
+        limits:
+          memory: 8G
