@@ -1,6 +1,7 @@
 """
 Svalinn AI - Diagnostic Benchmark
 Measures latency breakdown per stage to identify bottlenecks.
+Handles conditionally enabled guardians.
 """
 
 import asyncio
@@ -43,105 +44,74 @@ def get_memory_mb():
     return process.memory_info().rss / 1024 / 1024
 
 
-def print_model_config(name: str, model_wrapper):
-    """Inspects the private config of the loaded model wrapper"""
+def print_model_config(name: str, guardian):
+    """Inspects the private config of the loaded model wrapper, handling disabled states"""
+    if guardian is None:
+        logger.info(f"  🔹 {name:<15} | DISABLED")
+        return
+
     try:
-        # Accessing private _config for debugging/benchmarking purposes
-        cfg = model_wrapper._config
+        cfg = guardian.model._config
+        path_str = str(cfg.path)[-30:] if cfg.path else "N/A"
         logger.info(
-            f"  🔹 {name:<15} | Path: ...{str(cfg.path)[-30:]} | Threads: {cfg.n_threads} | MaxTokens: {cfg.max_tokens} | Temp: {cfg.temperature}"
+            f"  🔹 {name:<15} | Path: ...{path_str} | Threads: {cfg.n_threads} | MaxTokens: {cfg.max_tokens} | Temp: {cfg.temperature}"
         )
     except Exception as e:
         logger.warning(f"  Could not read config for {name}: {e}")
 
 
-async def run_benchmark():
-    logger.info("=" * 60)
-    logger.info("🚀 Svalinn AI Diagnostic Benchmark")
-    logger.info("=" * 60)
+def get_stage_time(result, stage: ProcessingStage) -> float:
+    """Safely extracts processing time for a specific stage."""
+    if stage in result.stage_results:
+        return result.stage_results[stage].processing_time_ms or 0.0
+    return 0.0
 
-    # 1. Initialization
-    logger.info(f"💾 Initial Memory: {get_memory_mb():.2f} MB")
-    start_load = time.time()
 
-    # Load with explicit config path
-    pipeline = SvalinnAIPipeline(config_dir=Path("config"))
+async def run_test_batch(pipeline, prompts, label, is_full_pipeline=True):
+    """Executes a batch of prompts and returns statistics."""
+    stats = {"total": [], "input": [], "honey": [], "output": []}
 
-    # Force load models to inspect config
-    _ = pipeline.input_guardian.model
-    _ = pipeline.honeypot.model
+    logger.info(f"\n{label}")
+    if is_full_pipeline:
+        logger.info(f"{'#':<3} | {'Total':<8} | {'Input':<8} | {'Honey':<8} | {'Output':<8} | {'Verdict':<10}")
+        logger.info("-" * 70)
+    else:
+        logger.info(f"{'#':<3} | {'Total':<8} | {'Input':<8} | {'Verdict':<10}")
+        logger.info("-" * 45)
 
-    load_time = time.time() - start_load
-    logger.info(f"⏱️  Pipeline Load Time: {load_time:.2f}s")
-
-    logger.info("\n📋 Active Model Configuration:")
-    print_model_config("Input Guardian", pipeline.input_guardian.model)
-    print_model_config("Honeypot", pipeline.honeypot.model)
-    print_model_config("Output Guardian", pipeline.output_guardian.model)
-
-    # 2. Warm-up
-    logger.info("\n🔥 Warming up models...")
-    await pipeline.process_request("Warmup request")
-
-    # Storage for detailed stats
-    safe_stats = {"total": [], "input": [], "honey": [], "output": []}
-    unsafe_stats = {"total": [], "input": []}
-
-    # 3. Safe Request Benchmark
-    logger.info("\n🟢 Benchmarking SAFE requests (Full Pipeline)...")
-    logger.info(f"{'#':<3} | {'Total':<8} | {'Input':<8} | {'Honey':<8} | {'Output':<8} | {'Verdict':<10}")
-    logger.info("-" * 60)
-
-    for i, prompt in enumerate(SAFE_PROMPTS * 2):
+    for i, prompt in enumerate(prompts * 2):
         t0 = time.time()
         result = await pipeline.process_request(prompt)
         dt = (time.time() - t0) * 1000
 
-        # Extract stage timings
-        t_input = result.stage_results.get(ProcessingStage.INPUT_GUARDIAN).processing_time_ms
-        t_honey = 0
-        t_output = 0
+        t_input = get_stage_time(result, ProcessingStage.INPUT_GUARDIAN)
+        t_honey = get_stage_time(result, ProcessingStage.HONEYPOT)
+        t_output = get_stage_time(result, ProcessingStage.OUTPUT_GUARDIAN)
 
-        if ProcessingStage.HONEYPOT in result.stage_results:
-            t_honey = result.stage_results.get(ProcessingStage.HONEYPOT).processing_time_ms
+        stats["total"].append(dt)
+        stats["input"].append(t_input)
+        stats["honey"].append(t_honey)
+        stats["output"].append(t_output)
 
-        if ProcessingStage.OUTPUT_GUARDIAN in result.stage_results:
-            t_output = result.stage_results.get(ProcessingStage.OUTPUT_GUARDIAN).processing_time_ms
+        if is_full_pipeline:
+            print(
+                f"{i + 1:<3} | {dt:6.0f}ms | {t_input:6.0f}ms | {t_honey:6.0f}ms | {t_output:6.0f}ms | {result.final_verdict.value}"
+            )
+        else:
+            print(f"{i + 1:<3} | {dt:6.0f}ms | {t_input:6.0f}ms | {result.final_verdict.value}")
 
-        # Record
-        safe_stats["total"].append(dt)
-        safe_stats["input"].append(t_input)
-        safe_stats["honey"].append(t_honey)
-        safe_stats["output"].append(t_output)
+    return stats
 
-        print(
-            f"{i + 1:<3} | {dt:6.0f}ms | {t_input:6.0f}ms | {t_honey:6.0f}ms | {t_output:6.0f}ms | {result.final_verdict.value}"
-        )
 
-    # 4. Unsafe Request Benchmark
-    logger.info("\n🔴 Benchmarking UNSAFE requests (Input Block)...")
-    logger.info(f"{'#':<3} | {'Total':<8} | {'Input':<8} | {'Verdict':<10}")
-    logger.info("-" * 40)
-
-    for i, prompt in enumerate(UNSAFE_PROMPTS * 2):
-        t0 = time.time()
-        result = await pipeline.process_request(prompt)
-        dt = (time.time() - t0) * 1000
-
-        t_input = result.stage_results.get(ProcessingStage.INPUT_GUARDIAN).processing_time_ms
-
-        unsafe_stats["total"].append(dt)
-        unsafe_stats["input"].append(t_input)
-
-        print(f"{i + 1:<3} | {dt:6.0f}ms | {t_input:6.0f}ms | {result.final_verdict.value}")
-
-    # 5. Report
-    logger.info("\n" + "=" * 60)
-    logger.info("📊 BOTTLENECK ANALYSIS")
-    logger.info("=" * 60)
+def print_final_report(safe_stats, unsafe_stats):
+    """Prints the bottleneck analysis report."""
 
     def get_avg(lst):
         return mean(lst) if lst else 0
+
+    logger.info("\n" + "=" * 60)
+    logger.info("📊 BOTTLENECK ANALYSIS")
+    logger.info("=" * 60)
 
     logger.info("🟢 Safe Requests Breakdown (Avg):")
     logger.info(f"   1. Input Guardian:  {get_avg(safe_stats['input']):.2f} ms")
@@ -155,6 +125,41 @@ async def run_benchmark():
     logger.info("   ---------------------------")
     logger.info(f"   TOTAL LATENCY:      {get_avg(unsafe_stats['total']):.2f} ms")
 
+
+async def run_benchmark():
+    """Main orchestrator for the benchmark."""
+    logger.info("=" * 60)
+    logger.info("🚀 Svalinn AI Diagnostic Benchmark")
+    logger.info("=" * 60)
+
+    # 1. Initialization
+    logger.info(f"💾 Initial Memory: {get_memory_mb():.2f} MB")
+    start_load = time.time()
+    pipeline = SvalinnAIPipeline(config_dir=Path("config"))
+
+    # Force load models
+    for guardian in [pipeline.input_guardian, pipeline.honeypot, pipeline.output_guardian]:
+        if guardian:
+            _ = guardian.model
+
+    logger.info(f"⏱️  Pipeline Load Time: {time.time() - start_load:.2f}s")
+    logger.info("\n📋 Active Model Configuration:")
+    print_model_config("Input Guardian", pipeline.input_guardian)
+    print_model_config("Honeypot", pipeline.honeypot)
+    print_model_config("Output Guardian", pipeline.output_guardian)
+
+    # 2. Warm-up
+    logger.info("\n🔥 Warming up models...")
+    await pipeline.process_request("Warmup request")
+
+    # 3. Execution
+    safe_stats = await run_test_batch(pipeline, SAFE_PROMPTS, "🟢 Benchmarking SAFE requests (Full Pipeline)...")
+    unsafe_stats = await run_test_batch(
+        pipeline, UNSAFE_PROMPTS, "🔴 Benchmarking UNSAFE requests (Input Block)...", False
+    )
+
+    # 4. Report
+    print_final_report(safe_stats, unsafe_stats)
     logger.info(f"\n💾 Final Memory Usage: {get_memory_mb():.2f} MB")
     logger.info("=" * 60)
 
