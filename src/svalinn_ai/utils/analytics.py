@@ -17,11 +17,15 @@ class AnalyticsEngine:
     Stores request telemetry, verdicts, latency metrics, and full model outputs.
     """
 
-    def __init__(self, db_path: Path):
+    def __init__(self, db_path: Path | str):
         self.db_path = db_path
-        # Ensure directory exists
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # Ensure directory exists only if it's a Path or a path string
+        if isinstance(self.db_path, Path) or (isinstance(self.db_path, str) and self.db_path != ":memory:"):
+            path_obj = Path(self.db_path)
+            path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+        # DuckDB handles :memory: string automatically
         self.conn = duckdb.connect(str(self.db_path))
         self._init_schema()
 
