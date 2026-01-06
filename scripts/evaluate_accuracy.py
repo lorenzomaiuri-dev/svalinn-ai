@@ -1,11 +1,3 @@
-"""
-Svalinn AI - Accuracy Evaluation Script
-Uses HuggingFace Datasets to evaluate the Input Guardian against known injection attacks.
-
-Dataset: deepset/prompt-injections (or similar)
-Metrics: Precision, Recall, F1-Score, Confusion Matrix
-"""
-
 import argparse
 import asyncio
 import logging
@@ -15,7 +7,7 @@ from datasets import load_dataset
 from sklearn.metrics import classification_report, confusion_matrix
 
 from svalinn_ai.core.pipeline import SvalinnAIPipeline
-from svalinn_ai.core.types import Verdict
+from svalinn_ai.core.types import ProcessingStage, Verdict
 
 # Configure logging
 logging.getLogger("svalinn").setLevel(logging.WARNING)
@@ -30,14 +22,9 @@ async def evaluate_dataset(limit: int = 100, split: str = "train"):
     """
     logger.info("📥 Loading dataset: deepset/prompt-injections")
     try:
-        # Load stream if possible to save bandwidth, but for small limit we can just load
         ds = load_dataset("deepset/prompt-injections", split=split)
-
-        # Shuffle and select subset
         ds = ds.shuffle(seed=42).select(range(min(limit, len(ds))))
-
         logger.info(f"🧪 Evaluating on {len(ds)} samples...")
-
     except Exception:
         logger.exception("Failed to load dataset")
         return
@@ -45,7 +32,8 @@ async def evaluate_dataset(limit: int = 100, split: str = "train"):
     # Initialize Pipeline
     pipeline = SvalinnAIPipeline(analytics_db_path=":memory:")
     # Pre-load model
-    _ = pipeline.input_guardian.model
+    if pipeline.input_guardian:
+        _ = pipeline.input_guardian.model
 
     y_true = []
     y_pred = []
@@ -57,8 +45,7 @@ async def evaluate_dataset(limit: int = 100, split: str = "train"):
         text = row["text"]
         label = row["label"]  # 1 = Injection, 0 = Safe
 
-        # Run Pipeline (Only need Verdict, so Input Guardian is enough usually)
-        # But we run full process_request to mimic real traffic
+        # Run Pipeline
         result = await pipeline.process_request(text)
 
         # Map Verdict to Label (UNSAFE = 1, SAFE = 0)
@@ -75,6 +62,21 @@ async def evaluate_dataset(limit: int = 100, split: str = "train"):
         preview = text[:40].replace("\n", " ") + "..."
 
         print(f"{i + 1:<4} | {label_str:<6} | {verdict_str:<6} | {status:<8} | {preview}")
+
+        # DEBUG: If we missed an injection
+        if label == 1 and pred_label == 0:
+            input_res = result.stage_results.get(ProcessingStage.INPUT_GUARDIAN)
+            print(f"   [MISS] Input Reasoning: {input_res.reasoning if input_res else 'N/A'}")
+
+            if ProcessingStage.HONEYPOT in result.stage_results:
+                print(
+                    f"   [MISS] Honeypot: {result.stage_results[ProcessingStage.HONEYPOT].generated_text[:150].strip()}..."
+                )
+
+            if ProcessingStage.OUTPUT_GUARDIAN in result.stage_results:
+                print(
+                    f"   [MISS] Output Reasoning: {result.stage_results[ProcessingStage.OUTPUT_GUARDIAN].reasoning.strip()}"
+                )
 
     # --- Metrics ---
     logger.info("\n" + "=" * 60)
@@ -94,10 +96,8 @@ async def evaluate_dataset(limit: int = 100, split: str = "train"):
     logger.info("\nClassification Report:")
     logger.info(report)
 
-    # Save to CSV for detailed analysis if needed
     if len(y_true) > 0:
         df = pd.DataFrame({"text": ds["text"], "true_label": y_true, "pred_label": y_pred})
-        # Mark errors
         df["error"] = df["true_label"] != df["pred_label"]
         output_file = "evaluation_report.csv"
         df.to_csv(output_file, index=False)
@@ -108,7 +108,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate Svalinn AI Accuracy")
     parser.add_argument("--limit", type=int, default=50, help="Number of samples to test")
     parser.add_argument("--split", type=str, default="train", help="Dataset split")
-
     args = parser.parse_args()
-
     asyncio.run(evaluate_dataset(limit=args.limit, split=args.split))

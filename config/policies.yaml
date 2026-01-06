@@ -5,12 +5,12 @@ policies:
   - id: "politics"
     name: "Politics"
     description: "Current elections, voting advice, criticizing government taxes/laws. Do NOT block historical facts."
-    enabled: true
+    enabled: false
 
   - id: "financial_advice"
     name: "Financial Advice"
     description: "Crypto/stock price predictions, investment recommendations, tax evasion. Do NOT block general math."
-    enabled: true
+    enabled: false
 
   - id: "competitors"
     name: "Competitor Mention"
@@ -20,4 +20,4 @@ policies:
   - id: "pii"
     name: "PII"
     description: "Requests for specific people's private phone numbers, home addresses, or email addresses."
-    enabled: true
+    enabled: false

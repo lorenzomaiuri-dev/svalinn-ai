@@ -16,16 +16,16 @@ honeypot:
   path: "models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
   context_length: 2048
   temperature: 0.9
-  max_tokens: 64
+  max_tokens: 128
   n_threads: 6
   n_gpu_layers: 0
 
 output_guardian:
   enabled: true
-  name: "Qwen2.5-0.5B (Judge)"
-  path: "models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+  name: "Phi-3.5-mini-instruct (Judge)"
+  path: "models/Phi-3.5-mini-instruct-Q4_K_M.gguf"
   context_length: 2048
   temperature: 0.0
-  max_tokens: 5
+  max_tokens: 20
   n_threads: 6
   n_gpu_layers: 0
