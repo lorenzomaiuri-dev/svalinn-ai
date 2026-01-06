@@ -18,7 +18,7 @@ class OutputGuardian(BaseGuardian):
         return "output_guardian"
 
     async def analyze(self, *args: Any, **kwargs: Any) -> GuardianResult:
-        original_request, generated_response = self._extract_parameters(*args, **kwargs)
+        original_request, generated_response = self._extract_text_parameters(*args, **kwargs)
         start_time = time.time()
 
         # 1. Build Analysis Prompt via PromptManager
@@ -47,8 +47,3 @@ class OutputGuardian(BaseGuardian):
         if "VIOLATION" in clean or "UNSAFE" in clean or "BLOCK" in clean:
             return Verdict.UNSAFE
         return Verdict.SAFE
-
-    def _extract_parameters(self, *args: tuple[Any, ...], **kwargs: Any) -> tuple[str, str]:
-        if len(args) == 2:
-            return str(args[0]), str(args[1])
-        return kwargs.get("original_request", ""), kwargs.get("generated_response", "")

@@ -5,13 +5,6 @@ from ..core.types import GuardianResult, Verdict
 from .base import BaseGuardian
 
 
-class MissingGuardianInputError(ValueError):
-    """Raised when the required input fields are missing for analysis."""
-
-    def __init__(self) -> None:
-        super().__init__("InputGuardian requires both 'raw_input' and 'normalized_input'")
-
-
 class InputGuardian(BaseGuardian):
     """
     Optimized Input Guardian.
@@ -28,7 +21,7 @@ class InputGuardian(BaseGuardian):
         Execute single-pass composite analysis.
         Combines Raw and Normalized inputs into one context via PromptManager.
         """
-        raw_input, normalized_input = self._extract_parameters(*args, **kwargs)
+        raw_input, normalized_input = self._extract_text_parameters(*args, **kwargs)
         start_time = time.time()
 
         # 1. Build Composite Prompt via PromptManager
@@ -80,15 +73,3 @@ class InputGuardian(BaseGuardian):
             return Verdict.UNSAFE
 
         return Verdict.SAFE
-
-    def _extract_parameters(self, *args: tuple[Any, ...], **kwargs: Any) -> tuple[str, str]:
-        if len(args) == 2:
-            return str(args[0]), str(args[1])
-
-        raw = str(args[0]) if args else kwargs.get("raw_input", "")
-        norm = str(args[1]) if len(args) > 1 else kwargs.get("normalized_input", "")
-
-        if not raw and not norm:
-            raise MissingGuardianInputError()
-
-        return raw, norm

@@ -35,25 +35,34 @@ class SvalinnAIPipeline:
     honeypot: HoneypotExecutor | None
     output_guardian: OutputGuardian | None
 
-    def __init__(self, config_dir: Path | None = None):
-        """
-        Initialize the Svalinn AI Pipeline.
+    def __init__(self, config_dir: Path | None = None, analytics_db_path: Path | str | None = None):
+        """Initialize the Svalinn AI Pipeline."""
+        # 1. Setup paths and managers
+        config_dir = self._resolve_config_dir(config_dir)
+        self.prompt_manager = PromptManager(config_dir)
+        self.model_manager = ModelManager((config_dir / "models.yaml") if config_dir else None)
 
-        Args:
-            config_dir: Directory containing configuration files (models.yaml, normalization.yaml)
-                        If None, tries to auto-discover 'config' directory in CWD.
-        """
-        # 1. Auto-discover config directory
+        # 2. Setup components
+        self.normalizer = self._init_normalizer(config_dir)
+        self.metrics = MetricsCollector()
+        self.analytics = self._init_analytics(analytics_db_path)
+
+        # 3. Initialize Guardians
+        self._init_guardians()
+
+        logger.info("svalinn-ai pipeline initialized")
+
+    def _resolve_config_dir(self, config_dir: Path | None) -> Path | None:
+        """Helper to auto-discover config directory."""
         if config_dir is None:
             cwd_config = Path("config")
             if cwd_config.exists() and cwd_config.is_dir():
-                config_dir = cwd_config
-                logger.debug(f"Auto-detected config directory: {config_dir.absolute()}")
+                logger.debug(f"Auto-detected config directory: {cwd_config.absolute()}")
+                return cwd_config
+        return config_dir
 
-        # 2. Initialize Prompt Manager
-        self.prompt_manager = PromptManager(config_dir)
-
-        # 3. Load Normalization Configuration
+    def _init_normalizer(self, config_dir: Path | None) -> AdvancedTextNormalizer:
+        """Helper to load normalization config and init normalizer."""
         norm_config: dict[str, Any] = {}
         if config_dir:
             norm_path = config_dir / "normalization.yaml"
@@ -64,25 +73,25 @@ class SvalinnAIPipeline:
                     logger.info(f"Loaded normalization config from {norm_path}")
                 except Exception as e:
                     logger.warning(f"Failed to load normalization config from {norm_path}: {e}")
-                    logger.info("Using default normalization rules")
-            else:
-                logger.debug(f"No normalization.yaml found in {config_dir}, using defaults")
 
-        # Initialize Normalizer with loaded config
-        self.normalizer = AdvancedTextNormalizer(config=norm_config)
+        return AdvancedTextNormalizer(config=norm_config)
 
-        # 4. Initialize Model Manager
-        model_config_path = (config_dir / "models.yaml") if config_dir else None
-        self.model_manager = ModelManager(model_config_path)
+    def _init_analytics(self, analytics_db_path: Path | str | None) -> AnalyticsEngine:
+        """Helper to resolve DB path and init analytics engine."""
+        if analytics_db_path == ":memory:":
+            return AnalyticsEngine(":memory:")
 
-        # 5. Initialize Metrics and Analytics
-        self.metrics = MetricsCollector()
-        data_dir = Path("data")
-        self.analytics = AnalyticsEngine(data_dir / "svalinn_logs.duckdb")
+        if analytics_db_path:
+            db_path = Path(analytics_db_path)
+        else:
+            data_dir = Path("data")
+            db_path = data_dir / "svalinn_logs.duckdb"
 
-        # 6. Initialize Guardians
+        return AnalyticsEngine(db_path)
 
-        # Input Guardian is core, usually enabled, but we check config anyway
+    def _init_guardians(self) -> None:
+        """Initialize all security guardians based on model config."""
+        # Input Guardian
         if self._is_model_enabled("input_guardian"):
             self.input_guardian = InputGuardian(self.model_manager, self.prompt_manager)
         else:
@@ -102,8 +111,6 @@ class SvalinnAIPipeline:
         else:
             self.output_guardian = None
             logger.info("Output Guardian disabled (Speed Mode).")
-
-        logger.info("svalinn-ai pipeline initialized")
 
     def _is_model_enabled(self, key: str) -> bool:
         """Helper to check model config status"""

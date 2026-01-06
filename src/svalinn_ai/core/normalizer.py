@@ -5,9 +5,15 @@ Responsible for neutralizing obfuscation techniques before LLM analysis.
 
 import base64
 import binascii
+import logging
 import re
 import unicodedata
-from typing import Any
+from typing import Any, cast
+
+from presidio_analyzer import AnalyzerEngine
+from presidio_anonymizer import AnonymizerEngine
+
+logger = logging.getLogger(__name__)
 
 
 class AdvancedTextNormalizer:
@@ -24,11 +30,22 @@ class AdvancedTextNormalizer:
                 "base64_decoding": True,
                 "unicode_normalization": True,
                 "invisible_char_removal": True,
+                "pii_redaction": False,
                 "emoji_removal": True,
                 "leetspeak_decoding": True,
                 "whitespace_cleanup": True,
             },
         )
+
+        # Initialize Presidio
+        self.analyzer = None
+        self.anonymizer = None
+        if self.toggles.get("pii_redaction"):
+            try:
+                self.analyzer = AnalyzerEngine()
+                self.anonymizer = AnonymizerEngine()
+            except Exception as e:
+                logger.warning(f"Failed to initialize PII Redaction (Presidio): {e}. Step will be skipped.")
 
         self._init_regexes()
         self._init_mappings()
@@ -94,6 +111,10 @@ class AdvancedTextNormalizer:
         if self.toggles.get("invisible_char_removal"):
             text = self.re_invisible.sub("", text)
 
+        # PII Redaction
+        if self.toggles.get("pii_redaction"):
+            text = self._redact_pii(text)
+
         # 4. Emoji Removal
         if self.toggles.get("emoji_removal"):
             text = self.re_emoji.sub("", text)
@@ -147,6 +168,20 @@ class AdvancedTextNormalizer:
             "has_embedded_encoding": has_encoding,
             "risk_score": min(risk_score, 1.0),
         }
+
+    def _redact_pii(self, text: str) -> str:
+        """Redact PII using Presidio."""
+        if not self.analyzer or not self.anonymizer or not text:
+            return text
+
+        try:
+            results = self.analyzer.analyze(text=text, language="en")
+            anonymized_result = self.anonymizer.anonymize(text=text, analyzer_results=cast(Any, results))
+        except Exception:
+            logger.exception("PII Redaction failed")
+            return text
+        else:
+            return anonymized_result.text
 
     def _decode_embedded_encodings(self, text: str) -> str:
         """Recursive Base64/Hex decoding."""
